@@ -1,0 +1,253 @@
+ServerGroups:
+- components:
+  - DataProcessor:
+      process_from_directory:
+        parameters:
+          directory:
+            max_length: 128
+            required: true
+        path: dataprocessor/process_from_directory/
+      process_from_file:
+        parameters:
+          file_path:
+            max_length: 128
+            required: true
+        path: dataprocessor/process_from_file/
+  - VSManager:
+      add_from_directory:
+        parameters:
+          collection_name:
+            default: base
+            max_length: 128
+            required: false
+          directory:
+            max_length: 128
+            required: true
+        path: vsmanager/add_from_directory/
+      add_from_file:
+        parameters:
+          collection_name:
+            default: base
+            max_length: 128
+            required: false
+          file_path:
+            max_length: 128
+            required: true
+        path: vsmanager/add_from_file/
+      build_from_directory:
+        parameters:
+          collection_name:
+            default: base
+            max_length: 128
+            required: false
+          directory:
+            max_length: 128
+            required: true
+        path: vsmanager/build_from_directory/
+      build_from_file:
+        parameters:
+          collection_name:
+            default: base
+            max_length: 128
+            required: false
+          file_path:
+            max_length: 128
+            required: true
+        path: vsmanager/build_from_file/
+  - S3FileManager:
+      download_files:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+        path: s3filemanager/download_files/
+      empty_prefix:
+        parameters:
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/empty_prefix/
+      list_files:
+        parameters:
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/list_files/
+      update_prefix:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/update_prefix/
+      upload_folders:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+          prefix:
+            default: ''
+            max_length: 128
+            required: false
+        path: s3filemanager/upload_folders/
+  name: injection_server
+- components:
+  - VectorStore:
+      get_nodes:
+        parameters:
+          collection_name:
+            default: base
+            max_length: 128
+            required: false
+        path: vectorstore/get_nodes/
+      search:
+        parameters:
+          collection_name:
+            default: base
+            max_length: 128
+            required: false
+          query:
+            max_length: 128
+            required: true
+        path: vectorstore/search/
+  - S3FileManager:
+      download_files:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+        path: s3filemanager/download_files/
+      empty_prefix:
+        parameters:
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/empty_prefix/
+      list_files:
+        parameters:
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/list_files/
+      update_prefix:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/update_prefix/
+      upload_folders:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+          prefix:
+            default: ''
+            max_length: 128
+            required: false
+        path: s3filemanager/upload_folders/
+  name: vector_search_server
+- components:
+  - LLMManager:
+      call_llm:
+        parameters:
+          prompt:
+            max_length: 8192
+            required: true
+          sys_prompt:
+            max_length: 1024
+            required: true
+          temperature:
+            default: 0.5
+            max_length: 128
+            required: false
+        path: llmmanager/call_llm/
+      call_llm_output_json:
+        parameters:
+          prompt:
+            max_length: 8192
+            required: true
+          sys_prompt:
+            max_length: 1024
+            required: true
+          temperature:
+            default: 0.5
+            max_length: 128
+            required: false
+        path: llmmanager/call_llm_output_json/
+      call_llm_stream:
+        parameters:
+          prompt:
+            max_length: 8192
+            required: true
+          sys_prompt:
+            max_length: 1024
+            required: true
+          temperature:
+            default: 0.5
+            max_length: 128
+            required: false
+        path: llmmanager/call_llm_stream/
+  - RAGGenerator:
+      rag_generate:
+        parameters:
+          query:
+            max_length: 128
+            required: true
+        path: raggenerator/rag_generate/
+      rag_generate_split_query:
+        parameters:
+          query:
+            max_length: 128
+            required: true
+        path: raggenerator/rag_generate_split_query/
+      split_query:
+        parameters:
+          query:
+            max_length: 128
+            required: true
+        path: raggenerator/split_query/
+  - S3FileManager:
+      download_files:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+        path: s3filemanager/download_files/
+      empty_prefix:
+        parameters:
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/empty_prefix/
+      list_files:
+        parameters:
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/list_files/
+      update_prefix:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+          prefix:
+            max_length: 128
+            required: true
+        path: s3filemanager/update_prefix/
+      upload_folders:
+        parameters:
+          local_path:
+            max_length: 128
+            required: true
+          prefix:
+            default: ''
+            max_length: 128
+            required: false
+        path: s3filemanager/upload_folders/
+  name: generation_server
+base_url: http://localhost:8000/api

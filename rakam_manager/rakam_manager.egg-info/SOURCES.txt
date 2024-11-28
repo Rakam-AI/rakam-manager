@@ -1,0 +1,11 @@
+README.md
+setup.py
+rakam_manager/__init__.py
+rakam_manager/cli.py
+rakam_manager/project_manager.py
+rakam_manager.egg-info/PKG-INFO
+rakam_manager.egg-info/SOURCES.txt
+rakam_manager.egg-info/dependency_links.txt
+rakam_manager.egg-info/entry_points.txt
+rakam_manager.egg-info/requires.txt
+rakam_manager.egg-info/top_level.txt

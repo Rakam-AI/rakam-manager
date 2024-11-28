@@ -1,0 +1,5 @@
+click
+PyYAML
+pytest
+pytest-mock
+typeguard

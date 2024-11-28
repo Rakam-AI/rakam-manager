@@ -1,0 +1,2 @@
+[console_scripts]
+rakam_manager = rakam_manager.cli:cli
