@@ -1,3 +1,7 @@
+from typing import get_type_hints
+import astor
+import subprocess
+import ast
 import os
 import yaml
 import shutil
@@ -69,6 +73,218 @@ class {component_name.capitalize()}(Component):
         except Exception as e:
             raise Exception(
                 f"Error generating package for component '{component_name}': {e}"
+            )
+
+    def _format_file(self, file_path):
+        """
+        format file .
+        """
+        subprocess.run(["black", file_path], check=True)
+
+    def _add_url_entry(self, url_file_path, url_route, view_name, url_name):
+        """
+        Adds a new path entry to a Django `urls.py` file.
+
+        Args:
+            file_name (str): Path to the `urls.py` file.
+            url_path (str): The URL pattern (e.g., 'new-view/').
+            view_name (str): The view function name (e.g., 'views.new_view').
+            url_name (str): The name for the URL pattern (e.g., 'new_view').
+        """
+        # Load the existing `urls.py` file
+        with open(url_file_path, "r") as file:
+            original_code = file.read()
+
+        # Parse the file into an AST
+        tree = ast.parse(original_code)
+
+        # Locate the `urlpatterns` and add the new path
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+                if node.targets[0].id == "urlpatterns" and isinstance(node.value, ast.List):
+                    # Construct the new path() call
+                    new_path = ast.Call(
+                        func=ast.Name(id="path", ctx=ast.Load()),
+                        args=[
+                            ast.Constant(value=url_route),  # URL
+                            ast.Attribute(value=ast.Name(id="views", ctx=ast.Load(
+                            )), attr=view_name, ctx=ast.Load()),  # View function
+                            ast.keyword(arg="name", value=ast.Constant(
+                                value=url_name)),  # Name
+                        ],
+                        keywords=[]
+                    )
+                    # Append the new path to urlpatterns
+                    node.value.elts.append(new_path)
+                    break
+
+        # Generate updated code
+        # unparse only available py3.9+
+        # TODO: discuss if we needd to use astor instead
+        updated_code = ast.unparse(tree)
+
+        # Step 5: Save the modified `urls.py` back
+        with open(url_file_path, "w") as file:
+            file.write(updated_code)
+        # Optional instruction for better visibility
+        self._format_file(url_file_path)
+
+        print(f"Added URL entry '{url_route}' to {url_file_path}.")
+
+    def _find_public_method_component_classes(self, file_path, call_back=None):
+        """
+        Finds classes in a Python file that inherit from a class named 'Component'
+        and return their public methods.
+
+        Args:
+            file_name (str): The path to the Python file to analyze.
+        """
+        methods: List[ast.FunctionDef] = []
+        # Read and parse the Python file
+        with open(file_path, "r") as file:
+            tree = ast.parse(file.read())
+
+        # Traverse the AST to find classes that inherit from `Component`
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):  # Check for class definitions
+                for base in node.bases:  # Check if the class inherits from `Component`
+                    if isinstance(base, ast.Name) and base.id == "Component":
+                        print(
+                            f"Class '{node.name}' inherits from 'Component'.")
+                        # Loop through the methods of the class
+                        for body_item in node.body:
+                            # Check for function definitions
+                            if isinstance(body_item, ast.FunctionDef):
+                                # Public methods are those not starting with an underscore
+                                # also ignore test methods
+                                if not body_item.name.startswith("_") and not body_item.name.startswith('test'):
+                                    methods.append(body_item)
+
+        return methods
+
+    def _create_view_from_component_methods(self, component_name: str, component_methods: List[ast.FunctionDef], views_file_path):
+        """
+        Creates Django function views in `views.py` using AST, based on public methods
+        of classes inheriting from `Component`.
+
+        Args:
+            component_name (str): name of thee component.
+            component_methods (List[ast.FunctionDef]): public methods from a `Component` class.
+            views_file_path (str): The `views.py` file to write the function views to.
+        """
+
+        if not component_methods:
+            print(
+                f"No public methods found."
+            )
+            return
+
+        # Read the existing target file content
+        try:
+            with open(views_file_path, "r") as file:
+                existing_code = ast.parse(file.read())
+        except FileNotFoundError:
+            # If the file doesn't exist, start with an empty module
+            existing_code = ast.Module(body=[], type_ignores=[])
+
+        # Add necessary imports if not already present
+        imports = [
+            ast.ImportFrom(module="rest_framework.decorators", names=[
+                           ast.alias(name="api_view")], level=0),
+            ast.ImportFrom(module="rest_framework.request", names=[
+                           ast.alias(name="Request")], level=0),
+
+
+        ]
+
+        for imp in imports:
+            if not any(isinstance(node, ast.ImportFrom) and node.module == imp.module for node in existing_code.body):
+                existing_code.body.insert(0, imp)
+
+        # Generate views
+        for method in component_methods:
+
+            # Create a function view for the public method
+            view_name = f"{component_name}_{method.name}_view"
+            view_func = ast.FunctionDef(
+                # lineno=existing_code.body[-1].lineno+1,
+                name=view_name,
+                args=ast.arguments(
+                    posonlyargs=[],
+                    args=[
+                        ast.arg(
+                            arg="request",
+                            annotation=ast.Name(
+                                id="Request", ctx=ast.Load()
+                            )
+                        )
+                    ],
+                    vararg=None,
+                    kwonlyargs=[],
+                    kw_defaults=[],
+                    kwarg=None,
+                    defaults=[],
+                ),
+                body=[
+                    ast.Assign(
+                        targets=[ast.Name(id="response", ctx=ast.Store())],
+                        value=ast.Call(
+                            func=ast.Attribute(
+                                value=ast.Attribute(
+                                    value=ast.Name(
+                                        id="components", ctx=ast.Load()),
+                                    attr=component_name,
+                                    ctx=ast.Load()
+                                ),
+                                attr=method.name,
+                                ctx=ast.Load()
+                            ),
+                            args=[
+                                ast.Attribute(
+                                    value=ast.Name(
+                                        id="request", ctx=ast.Load()
+                                    ),
+                                    attr="data", ctx=ast.Load()
+                                )
+                            ],
+                            keywords=[]
+                        ),
+                    ),
+                    ast.Return(
+                        value=ast.Name(id="response", ctx=ast.Load())
+                    )
+                ],
+                decorator_list=[
+                    ast.Call(
+                        func=ast.Name(id="api_view", ctx=ast.Load()),
+                        args=[
+                            ast.List(elts=[ast.Constant(value="POST")], ctx=ast.Load())],
+                        keywords=[]
+                    )
+                ]
+            )
+
+            # Avoid duplicate definitions
+            if not any(isinstance(node, ast.FunctionDef) and node.name == view_name for node in existing_code.body):
+                existing_code.body.append(view_func)
+
+        # Write back the updated code to the target file
+        updated_code = ast.unparse(existing_code)
+        with open(views_file_path, "w") as file:
+            file.write(updated_code)
+
+        print(f"Views added to {views_file_path}.")
+
+    def update_views(self, component_name, component_functions_path, view_path, url_file_path):
+        methods = self._find_public_method_component_classes(
+            component_functions_path
+        )
+        self._create_view_from_component_methods(
+            component_name, methods, view_path
+        )
+        for method in methods:
+            self._add_url_entry(
+                url_file_path, f'external/{component_name}/{method.name}/', f"{method.name}_view", f"{method.name}_view"
             )
 
     def add_component(self, component_name):
@@ -219,7 +435,8 @@ class {component_name.capitalize()}(Component):
         :param parameters: Parameters of the function.
         :param output_type: Return type of the function.
         """
-        SERIALIZERS_FILE = os.path.join(project_path, "application/serializers.py")
+        SERIALIZERS_FILE = os.path.join(
+            project_path, "application/serializers.py")
         VIEWS_FILE = os.path.join(project_path, "application/views.py")
         try:
             # Generate serializer
@@ -237,7 +454,8 @@ class {component_name.capitalize()}(Component):
 
             with open(SERIALIZERS_FILE, "a") as serializers_file:
                 serializers_file.write(serializer_code)
-                print(f"Serializer for '{function_name}' added to serializers.py.")
+                print(
+                    f"Serializer for '{function_name}' added to serializers.py.")
 
             self._add_serializer_import(serializer_class, VIEWS_FILE)
 
@@ -314,7 +532,8 @@ class {component_name.capitalize()}(Component):
                 "list": {"type": "array", "items": {"type": "object"}},
                 "dict": {"type": "object", "additionalProperties": True},
             }
-            output_schema = type_mapping.get(output_type.lower(), {"type": "object"})
+            output_schema = type_mapping.get(
+                output_type.lower(), {"type": "object"})
             return {
                 "type": "object",
                 "properties": {
@@ -455,12 +674,14 @@ class {component_name.capitalize()}(Component):
             if import_statement in lines or any(
                 init_statement.strip() in line for line in lines
             ):
-                print(f"Component '{component_name}' already exists in components.py.")
+                print(
+                    f"Component '{component_name}' already exists in components.py.")
                 return
 
             # Add import statement before the first blank line after the existing imports
             import_index = next(
-                (i for i, line in enumerate(lines) if line.strip() == ""), len(lines)
+                (i for i, line in enumerate(lines)
+                 if line.strip() == ""), len(lines)
             )
             lines.insert(import_index, import_statement)
 
@@ -475,7 +696,8 @@ class {component_name.capitalize()}(Component):
             with open(init_component_path, "w") as components_file:
                 components_file.writelines(lines)
 
-            print(f"Component '{component_name}' added to components.py successfully.")
+            print(
+                f"Component '{component_name}' added to components.py successfully.")
         except Exception as e:
             raise Exception(
                 f"Error updating components.py for component '{component_name}': {e}"
@@ -501,7 +723,8 @@ class {component_name.capitalize()}(Component):
             file.write(f"from .{component_name} import *\n")
 
     def _add_views(self, component_name, functions):
-        views_file = os.path.join(self.COMPONENTS_DIR, component_name, "views.py")
+        views_file = os.path.join(
+            self.COMPONENTS_DIR, component_name, "views.py")
         with open(views_file, "a") as file:
             for func in functions:
                 func_name = func["name"]
@@ -540,7 +763,8 @@ class {func_name.capitalize()}Serializer(serializers.Serializer):
                     )
 
     def _add_unit_tests(self, component_name, functions):
-        tests_file = os.path.join(self.COMPONENTS_DIR, component_name, "tests.py")
+        tests_file = os.path.join(
+            self.COMPONENTS_DIR, component_name, "tests.py")
         with open(tests_file, "a") as file:
             for func in functions:
                 func_name = func["name"]

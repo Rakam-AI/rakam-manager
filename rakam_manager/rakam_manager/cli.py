@@ -1,3 +1,6 @@
+import traceback
+from typeguard import check_type
+from typing import get_type_hints, Any, Union, List, Dict, Tuple, Optional
 import click
 import json
 from rakam_manager.project_manager import ProjectManager
@@ -35,26 +38,53 @@ def add_component(name, project_path):
     component_path = os.path.join(
         project_path, "application/rakam_systems/rakam_systems/components", name
     )
-    init_component_path = os.path.join(project_path, "application/engine/components.py")
+    init_component_path = os.path.join(
+        project_path, "application/engine/components.py")
     try:
         if pm.add_component(name):
             click.echo(f"Component '{name}' added successfully.")
-            pm.generate_component_package(name, component_path)  # Generate the package
+            pm.generate_component_package(
+                name, component_path)  # Generate the package
             pm.update_components_file(
                 name, init_component_path
             )  # Update the components.py file
-            click.echo(f"Component '{name}' added and package generated successfully.")
+            click.echo(
+                f"Component '{name}' added and package generated successfully.")
         else:
             click.echo(f"Component '{name}' already exists.")
     except Exception as e:
         click.echo(f"Error adding component '{name}': {e}")
 
 
-import click
-import json
-import os
-from typing import get_type_hints, Any, Union, List, Dict, Tuple, Optional
-from typeguard import check_type
+@cli.command()
+@click.option("--name", required=True, help="Name of the component to add.")
+@click.option(
+    "--project-path", required=True, help="Path to the project configuration file."
+)
+def update_views(name, project_path):
+    """Generate views entry for a custom component"""
+    pm = ProjectManager()
+    pm.CONFIG_FILE = os.path.join(project_path, "system_config.yaml")
+    component_functions_path = os.path.join(
+        project_path,
+        "application/rakam_systems/rakam_systems/components",
+        name,
+        f'{name}_functions.py'
+    )
+    init_component_path = os.path.join(
+        project_path, "application/engine/components.py")
+    views_path = os.path.join(project_path, 'application/views.py')
+    url_path = os.path.join(project_path, 'application/urls.py')
+    try:
+
+        click.echo(f"Component '{name}' added successfully.")
+        pm.update_views(name, component_functions_path, views_path, url_path)
+        click.echo(
+            f"Component '{name}' added and package generated successfully.")
+
+    except Exception as e:
+        print(traceback.format_exc())
+        click.echo(f"Error adding component '{name}': {e}")
 
 
 def is_valid_type(type_name: str) -> bool:
