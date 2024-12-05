@@ -10,7 +10,8 @@ setup(
         "PyYAML",
         "pytest",
         "pytest-mock",
-        "typeguard",  # Add dependencies here
+        "typeguard",
+        "black"  # Add dependencies here
     ],
     entry_points={
         "console_scripts": [
