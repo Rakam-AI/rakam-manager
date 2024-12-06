@@ -157,7 +157,7 @@ class {component_name.capitalize()}(Component):
 
         print(f"Added URL entry '{url_route}' to {url_file_path}.")
 
-    def _find_public_method_component_classes(self, file_path, call_back=None):
+    def _find_public_method_component_classes(self, file_path):
         """
         Finds classes in a Python file that inherit from a class named 'Component'
         and return their public methods.
@@ -175,8 +175,6 @@ class {component_name.capitalize()}(Component):
             if isinstance(node, ast.ClassDef):  # Check for class definitions
                 for base in node.bases:  # Check if the class inherits from `Component`
                     if isinstance(base, ast.Name) and base.id == "Component":
-                        print(
-                            f"Class '{node.name}' inherits from 'Component'.")
                         # Loop through the methods of the class
                         for body_item in node.body:
                             # Check for function definitions
@@ -231,9 +229,11 @@ class {component_name.capitalize()}(Component):
         for method in component_methods:
 
             # Create a function view for the public method
+            serializer_name = self._to_camel_case_class_name(
+                f"{component_name} {method.name} Serializer"
+            )
             view_name = f"{component_name}_{method.name}_view"
             view_func = ast.FunctionDef(
-                # lineno=existing_code.body[-1].lineno+1,
                 name=view_name,
                 args=ast.arguments(
                     posonlyargs=[],
@@ -252,33 +252,118 @@ class {component_name.capitalize()}(Component):
                     defaults=[],
                 ),
                 body=[
+
+                    # serializer = SerialzierClass(data=request.data)
                     ast.Assign(
-                        targets=[ast.Name(id="response", ctx=ast.Store())],
+                        targets=[ast.Name(id='serializer', ctx=ast.Load())],
                         value=ast.Call(
+                            func=ast.Name(id=serializer_name, ctx=ast.Load()),
+                            args=[],
+                            keywords=[
+                                ast.keyword(
+                                    arg='data',
+                                    value=ast.Attribute(
+                                        value=ast.Name(
+                                            id="request", ctx=ast.Load()
+                                        ),
+                                        attr="data",
+                                        ctx=ast.Load()
+                                    )
+                                )
+                            ]
+                        )
+                    ),
+                    # if serializer.is_valid():
+                    ast.If(
+                        test=ast.Call(
                             func=ast.Attribute(
-                                value=ast.Attribute(
-                                    value=ast.Name(
-                                        id="components", ctx=ast.Load()),
-                                    attr=component_name,
-                                    ctx=ast.Load()
-                                ),
-                                attr=method.name,
+                                value=ast.Name(id="serializer",
+                                               ctx=ast.Load()),
+                                attr="is_valid",
                                 ctx=ast.Load()
                             ),
-                            args=[
-                                ast.Attribute(
-                                    value=ast.Name(
-                                        id="request", ctx=ast.Load()
-                                    ),
-                                    attr="data", ctx=ast.Load()
-                                )
-                            ],
+                            args=[],
                             keywords=[]
                         ),
-                    ),
-                    ast.Return(
-                        value=ast.Name(id="response", ctx=ast.Load())
+                        body=[
+
+                            # response = components.data_processor.call_process_file(**serializer.validated_data)
+                            ast.Assign(
+                                targets=[
+                                    ast.Name(id="response", ctx=ast.Store())],
+                                value=ast.Call(
+                                    func=ast.Attribute(
+                                        value=ast.Attribute(
+                                            value=ast.Name(
+                                                id="components", ctx=ast.Load()),
+                                            attr=component_name,
+                                            ctx=ast.Load()
+                                        ),
+                                        attr=method.name,
+                                        ctx=ast.Load()
+                                    ),
+                                    args=[
+
+                                    ],
+                                    keywords=[
+                                        ast.keyword(
+                                            arg=None,
+                                            value=ast.Attribute(
+                                                value=ast.Name(
+                                                    id="serializer", ctx=ast.Load()),
+                                                attr="validated_data",
+                                                ctx=ast.Load()
+                                            ),
+                                            ctx=ast.Load()
+
+                                        )
+                                    ]
+
+                                ),
+                            ),
+                            # return Response(response, status=status.HTTP_200_OK)
+                            ast.Return(
+                                value=ast.Call(
+                                    func=ast.Name(
+                                        id="Response", ctx=ast.Load()),
+                                    args=[
+                                        ast.Name(id="response", ctx=ast.Load())
+                                    ],
+                                    keywords=[]
+                                )
+                            )
+                        ],
+                        # else block
+                        orelse=[
+                            # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                            ast.Return(
+                                value=ast.Call(
+                                    func=ast.Name(
+                                        id="Response", ctx=ast.Load()),
+                                    args=[
+                                        ast.Attribute(
+                                            value=ast.Name(id="serializer",
+                                                           ctx=ast.Load()),
+                                            attr="errors",
+                                            ctx=ast.Load()
+                                        )
+                                    ],
+                                    keywords=[
+                                        ast.keyword(
+                                            arg="status",
+                                            value=ast.Attribute(
+                                                value=ast.Name(
+                                                    id="status", ctx=ast.Load()),
+                                                attr="HTTP_400_BAD_REQUEST",
+                                                ctx=ast.Load()
+                                            )
+                                        )
+                                    ]
+                                )
+                            )
+                        ]
                     )
+
                 ],
                 decorator_list=[
                     ast.Call(
@@ -309,7 +394,6 @@ class {component_name.capitalize()}(Component):
             methods (list): List of methods with arguments and return types.
             serializers_file_path (str): The `serializers.py` file to write the serializers to.
         """
-        print(serializers_file_path)
 
         if not methods:
             print(
@@ -349,7 +433,7 @@ class {component_name.capitalize()}(Component):
 
             method_name = method.name
             serializer_name = self._to_camel_case_class_name(
-                f"{component_name.capitalize()} {method_name.capitalize()}Serializer"
+                f"{component_name} {method.name} Serializer"
             )
             return_type = ast.unparse(
                 method.returns
@@ -365,7 +449,6 @@ class {component_name.capitalize()}(Component):
             # Generate fields based on type hints
             fields = []
             for arg_name, arg_type in type_hints.items():
-                print(arg_type)
                 field_type = "CharField"  # Default to CharField
                 if arg_type == 'int':
                     field_type = "IntegerField"
@@ -405,8 +488,6 @@ class {component_name.capitalize()}(Component):
                         attr='Serializer',
                         ctx=ast.Load()
                     ),
-
-
                     # ast.Name(id="Serializer", ctx=ast.Load())
 
                 ],
@@ -430,11 +511,11 @@ class {component_name.capitalize()}(Component):
         methods = self._find_public_method_component_classes(
             component_functions_path
         )
-        self._create_view_from_component_methods(
-            component_name, methods, view_file_path
-        )
         self._create_serializers_from_component_methods(
             component_name, methods, serializers_file_path
+        )
+        self._create_view_from_component_methods(
+            component_name, methods, view_file_path
         )
         for method in methods:
             self._add_url_entry(
