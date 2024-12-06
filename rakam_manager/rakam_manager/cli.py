@@ -74,13 +74,19 @@ def update_views(name, project_path):
     init_component_path = os.path.join(
         project_path, "application/engine/components.py")
     views_path = os.path.join(project_path, 'application/views.py')
-    url_path = os.path.join(project_path, 'application/urls.py')
+    urls_path = os.path.join(project_path, 'application/urls.py')
+    serializrs_path = os.path.join(project_path, 'application/serializers.py')
     try:
 
-        click.echo(f"Component '{name}' added successfully.")
-        pm.update_views(name, component_functions_path, views_path, url_path)
-        click.echo(
-            f"Component '{name}' added and package generated successfully.")
+        click.echo(f"Views of '{name}' component are being generated.")
+        pm.update_views(
+            name,
+            component_functions_path,
+            views_path,
+            urls_path,
+            serializrs_path
+        )
+        click.echo(f"New views are available.")
 
     except Exception as e:
         print(traceback.format_exc())

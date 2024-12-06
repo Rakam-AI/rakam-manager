@@ -1,11 +1,11 @@
-from typing import get_type_hints
-import astor
-import subprocess
 import ast
 import os
-import yaml
+import re
 import shutil
-from typing import Any, List, Dict, Tuple, Union, Optional
+import subprocess
+from typing import Dict, List, Tuple
+
+import yaml
 
 
 class ProjectManager:
@@ -75,11 +75,37 @@ class {component_name.capitalize()}(Component):
                 f"Error generating package for component '{component_name}': {e}"
             )
 
+    def _to_camel_case_class_name(self, input_string: str) -> str:
+        """
+        Convert a given string to a proper class name in CamelCase convention.
+
+        Args:
+            input_string (str): The string to convert.
+
+        Returns:
+            str: The converted class name.
+        """
+        # Remove any non-alphanumeric characters and replace them with spaces
+        cleaned_string = re.sub(r'[^a-zA-Z0-9]', ' ', input_string)
+
+        # Split the string into words, capitalize each, and join them
+        camel_case_name = ''.join(
+            word.capitalize()
+            for word in cleaned_string.split()
+        )
+
+        return camel_case_name
+
     def _format_file(self, file_path):
         """
         format file .
         """
-        subprocess.run(["black", file_path], check=True)
+    # Redirect output and errors to /dev/null
+        with open("/dev/null", "w") as devnull:
+            subprocess.run(
+                ["black", file_path], stdout=devnull,
+                stderr=devnull, check=True
+            )
 
     def _add_url_entry(self, url_file_path, url_route, view_name, url_name):
         """
@@ -269,18 +295,146 @@ class {component_name.capitalize()}(Component):
                 existing_code.body.append(view_func)
 
         # Write back the updated code to the target file
-        updated_code = ast.unparse(existing_code)
+        updated_code = ast.unparse(ast.fix_missing_locations(existing_code))
         with open(views_file_path, "w") as file:
             file.write(updated_code)
 
         print(f"Views added to {views_file_path}.")
 
-    def update_views(self, component_name, component_functions_path, view_path, url_file_path):
+    def _create_serializers_from_component_methods(self, component_name: str, methods: List[ast.FunctionDef], serializers_file_path):
+        """
+        Creates serializers based on method arguments and return types.
+
+        Args:
+            methods (list): List of methods with arguments and return types.
+            serializers_file_path (str): The `serializers.py` file to write the serializers to.
+        """
+        print(serializers_file_path)
+
+        if not methods:
+            print(
+                f"No public methods found."
+            )
+            return
+
+        # Read the existing target file content
+        try:
+            with open(serializers_file_path, "r") as file:
+                existing_code = ast.parse(file.read())
+        except FileNotFoundError:
+            # If the file doesn't exist, start with an empty module
+            existing_code = ast.Module(body=[], type_ignores=[])
+
+        # Add necessary imports if not already present
+        imports = [
+            ast.ImportFrom(
+                module="rest_framework",
+                names=[
+                    ast.alias(name="serializer"),
+                    # ast.alias(name="Serializer"),
+                    # ast.alias(name="CharField"),
+                    # ast.alias(name="IntegerField"),
+                    # ast.alias(name="DictField")
+                ],
+                level=0
+            ),
+        ]
+
+        for imp in imports:
+            if not any(isinstance(node, ast.ImportFrom) and node.module == imp.module for node in existing_code.body):
+                existing_code.body.insert(0, imp)
+
+        # Generate serializers
+        for method in methods:
+
+            method_name = method.name
+            serializer_name = self._to_camel_case_class_name(
+                f"{component_name.capitalize()} {method_name.capitalize()}Serializer"
+            )
+            return_type = ast.unparse(
+                method.returns
+            ) if method.returns else None
+            type_hints = {}
+            for arg in method.args.args:
+                if arg.arg == 'self':
+                    continue
+                type_hints[arg.arg] = ast.unparse(
+                    arg.annotation
+                ) if arg.annotation else None
+
+            # Generate fields based on type hints
+            fields = []
+            for arg_name, arg_type in type_hints.items():
+                print(arg_type)
+                field_type = "CharField"  # Default to CharField
+                if arg_type == 'int':
+                    field_type = "IntegerField"
+                elif arg_type == 'dict':
+                    field_type = "DictField"
+                fields.append(
+                    ast.Assign(
+                        targets=[ast.Name(id=arg_name, ctx=ast.Store())],
+                        value=ast.Call(
+                            func=ast.Attribute(
+                                value=ast.Name(
+                                    id='serializers',
+                                    ctx=ast.Load()
+                                ),
+                                attr=field_type,
+                                ctx=ast.Load()
+                            ),
+                            args=[],
+                            keywords=[]
+                        )
+                        # value=ast.Call(
+                        #     func=ast.Name(id=field_type, ctx=ast.Load()),
+                        #     args=[],
+                        #     keywords=[]
+                        # ),
+                    )
+                )
+            # Create the serializer class
+            serializer_class = ast.ClassDef(
+                name=serializer_name,
+                bases=[
+                    ast.Attribute(
+                        value=ast.Name(
+                            id='serializers',
+                            ctx=ast.Load()
+                        ),
+                        attr='Serializer',
+                        ctx=ast.Load()
+                    ),
+
+
+                    # ast.Name(id="Serializer", ctx=ast.Load())
+
+                ],
+                keywords=[],
+                body=fields,
+                decorator_list=[],
+            )
+
+            # Avoid duplicate definitions
+            if not any(isinstance(node, ast.ClassDef) and node.name == serializer_name for node in existing_code.body):
+                existing_code.body.append(serializer_class)
+
+        # Write back the updated code to the target file
+        updated_code = ast.unparse(ast.fix_missing_locations(existing_code))
+        with open(serializers_file_path, "w") as file:
+            file.write(updated_code)
+
+        print(f"Serializers added to {serializers_file_path}.")
+
+    def update_views(self, component_name, component_functions_path, view_file_path, url_file_path, serializers_file_path):
         methods = self._find_public_method_component_classes(
             component_functions_path
         )
         self._create_view_from_component_methods(
-            component_name, methods, view_path
+            component_name, methods, view_file_path
+        )
+        self._create_serializers_from_component_methods(
+            component_name, methods, serializers_file_path
         )
         for method in methods:
             self._add_url_entry(
