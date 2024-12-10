@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+import yaml
 import traceback
 from typeguard import check_type
 from typing import get_type_hints, Any, Union, List, Dict, Tuple, Optional
@@ -27,6 +29,41 @@ def create_project(name):
 
 
 @cli.command()
+@click.option(
+    "--project-path", required=True, help="Path to the project configuration file."
+)
+def yaml_test(project_path):
+    """Generate deployable project."""
+    # Load environment variables from .env file
+    dotenv_path = os.path.join(project_path, '.env')
+    if os.path.exists(dotenv_path):
+        load_dotenv(dotenv_path)
+
+    # Load and parse the YAML configuration file
+    with open(os.path.join(project_path, 'system_config.yaml'), "r") as file:
+        config = yaml.safe_load(os.path.expandvars(file.read()))
+
+    print(config['envs'])
+
+
+@cli.command()
+@click.option(
+    "--project-path", required=True, help="Path to the project configuration file."
+)
+def generate(project_path):
+    """generate deployable project."""
+    pm = ProjectManager()
+    pm.BASE_TEMPLATE_DIR
+    # pm.project_path = project_path
+    try:
+        pm.generate_build(project_path)
+        click.echo(f"Project  generated successfully.")
+    except Exception as e:
+        print(traceback.format_exc())
+        click.echo(f"Error generating project: {e}")
+
+
+@cli.command()
 @click.option("--name", required=True, help="Name of the component to add.")
 @click.option(
     "--project-path", required=True, help="Path to the project configuration file."
@@ -36,7 +73,7 @@ def add_component(name, project_path):
     pm = ProjectManager()
     pm.CONFIG_FILE = os.path.join(project_path, "system_config.yaml")
     component_path = os.path.join(
-        project_path, "application/rakam_systems/rakam_systems/components", name
+        project_path, "rakam_systems/components", name
     )
     init_component_path = os.path.join(
         project_path, "application/engine/components.py")
@@ -45,9 +82,10 @@ def add_component(name, project_path):
             click.echo(f"Component '{name}' added successfully.")
             pm.generate_component_package(
                 name, component_path)  # Generate the package
-            pm.update_components_file(
-                name, init_component_path
-            )  # Update the components.py file
+            # TODO: do this instruction when generating django app
+            # pm.update_components_file(
+            #     name, init_component_path
+            # )  # Update the components.py file
             click.echo(
                 f"Component '{name}' added and package generated successfully.")
         else:

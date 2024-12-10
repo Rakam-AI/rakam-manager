@@ -92,8 +92,6 @@ ServerGroups:
             max_length: 128
             required: false
         path: s3filemanager/upload_folders/
-  - test_comp: {}
-  - test_test: {}
   name: injection_server
 - components:
   - VectorStore:
@@ -253,6 +251,3 @@ ServerGroups:
         path: s3filemanager/upload_folders/
   name: generation_server
 base_url: http://localhost:8000/api
-envs:
-  test: WIOW2
-  test2: WIOW2

@@ -6,3 +6,4 @@ Requires-Dist: PyYAML
 Requires-Dist: pytest
 Requires-Dist: pytest-mock
 Requires-Dist: typeguard
+Requires-Dist: black

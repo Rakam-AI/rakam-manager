@@ -1,3 +1,5 @@
+import traceback
+from typing import Optional
 import ast
 import os
 import re
@@ -6,6 +8,8 @@ import subprocess
 from typing import Dict, List, Tuple
 
 import yaml
+
+from dotenv import load_dotenv
 
 
 class ProjectManager:
@@ -21,6 +25,77 @@ class ProjectManager:
                 f"Configuration file '{self.CONFIG_FILE}' not found."
             )
 
+    def load_system_config(self, path: str = None):
+        if path is None:
+            path = self.BASE_TEMPLATE_DIR
+        # Load environment variables from .env file
+        dotenv_path = os.path.join(path, '.env')
+        if os.path.exists(dotenv_path):
+            load_dotenv(dotenv_path)
+
+        # Load and parse the YAML configuration file
+        with open(os.path.join(path, 'system_config.yaml'), "r") as file:
+            config = yaml.safe_load(os.path.expandvars(file.read()))
+        return config
+
+    def generate_build(self, project_path):
+        dist = os.path.join(project_path, 'dist')
+        if os.path.exists(dist):
+            shutil.rmtree(dist)
+
+        shutil.copytree(
+            self.BASE_TEMPLATE_DIR,
+            dist
+        )
+        shutil.rmtree(os.path.join(dist, 'application', 'rakam_systems'))
+        # Iterate over all items in the current directory
+        for item in os.listdir(project_path):
+            if item in ['dist', 'venv']:
+                continue
+            source_path = os.path.join(project_path, item)
+            destination_path = os.path.join(
+                dist, 'application',  'rakam_systems', item)
+
+            # Copy files and directories
+            if os.path.isdir(source_path):
+                shutil.copytree(source_path, destination_path,
+                                dirs_exist_ok=True)
+            else:
+                shutil.copy2(source_path, destination_path)
+        config = self.load_system_config(project_path)
+        # Add the new component
+        if not config["ServerGroups"][0]["components"]:
+            config["ServerGroups"][0]["components"] = []
+        init_component_path = os.path.join(
+            dist, "application/engine/components.py")
+        views_path = os.path.join(dist, 'application/views.py')
+        urls_path = os.path.join(dist, 'application/urls.py')
+        serializrs_path = os.path.join(dist, 'application/serializers.py')
+        for item in config["ServerGroups"][0]["components"]:
+            for i in item:
+                if i.islower():
+                    component_functions_path = os.path.join(
+                        dist,
+                        "application/rakam_systems/rakam_systems/components",
+                        i,
+                        f'{i}_functions.py'
+                    )
+                    self.update_components_file(
+                        i, init_component_path,
+                        component_functions_path, project_path
+                    )
+                    self.update_views(
+                        i,
+                        component_functions_path,
+                        views_path,
+                        urls_path,
+                        serializrs_path
+                    )
+
+        with open(self.CONFIG_FILE, "w") as file:
+            yaml.safe_dump(config, file, default_flow_style=False)
+        return True
+
     def create_project(self, project_name):
         if not os.path.exists(self.BASE_TEMPLATE_DIR):
             raise FileNotFoundError("Base template directory does not exist.")
@@ -28,7 +103,11 @@ class ProjectManager:
         if os.path.exists(project_name):
             raise FileExistsError(f"Project '{project_name}' already exists.")
 
-        shutil.copytree(self.BASE_TEMPLATE_DIR, project_name)
+        shutil.copytree(
+            os.path.join(self.BASE_TEMPLATE_DIR, 'application',
+                         'rakam_systems'),
+            project_name
+        )
         print(f"Project '{project_name}' created successfully.")
 
     def generate_component_package(self, component_name, component_path):
@@ -157,15 +236,17 @@ class {component_name.capitalize()}(Component):
 
         print(f"Added URL entry '{url_route}' to {url_file_path}.")
 
-    def _find_public_method_component_classes(self, file_path):
+    def _find_component_class(self, file_path) -> Optional[ast.ClassDef]:
         """
-        Finds classes in a Python file that inherit from a class named 'Component'
-        and return their public methods.
+        Finds the first class in a Python file that inherits from a class named 'Component'.
 
         Args:
-            file_name (str): The path to the Python file to analyze.
+            file_path (str): The path to the Python file to analyze.
+
+        Returns:
+            Optional[ast.ClassDef]: The first class definition node that inherits from 'Component',
+            or None if no such class is found.
         """
-        methods: List[ast.FunctionDef] = []
         # Read and parse the Python file
         with open(file_path, "r") as file:
             tree = ast.parse(file.read())
@@ -175,14 +256,29 @@ class {component_name.capitalize()}(Component):
             if isinstance(node, ast.ClassDef):  # Check for class definitions
                 for base in node.bases:  # Check if the class inherits from `Component`
                     if isinstance(base, ast.Name) and base.id == "Component":
-                        # Loop through the methods of the class
-                        for body_item in node.body:
-                            # Check for function definitions
-                            if isinstance(body_item, ast.FunctionDef):
-                                # Public methods are those not starting with an underscore
-                                # also ignore test methods
-                                if not body_item.name.startswith("_") and not body_item.name.startswith('test'):
-                                    methods.append(body_item)
+                        return node
+        return None
+
+    def _find_public_method_component_classes(self, file_path):
+        """
+        Finds classes in a Python file that inherit from a class named 'Component'
+        and return their public methods.
+
+        Args:
+            file_name (str): The path to the Python file to analyze.
+        """
+        node = self._find_component_class(file_path)
+        if node is None:
+            return []
+        methods: List[ast.FunctionDef] = []
+        # Loop through the methods of the class
+        for body_item in node.body:
+            # Check for function definitions
+            if isinstance(body_item, ast.FunctionDef):
+                # Public methods are those not starting with an underscore
+                # also ignore test methods
+                if not body_item.name.startswith("_") and not body_item.name.startswith('test'):
+                    methods.append(body_item)
 
         return methods
 
@@ -492,7 +588,7 @@ class {component_name.capitalize()}(Component):
 
                 ],
                 keywords=[],
-                body=fields,
+                body=fields if fields else [ast.Pass()],
                 decorator_list=[],
             )
 
@@ -526,8 +622,7 @@ class {component_name.capitalize()}(Component):
         """
         Add a new component to the YAML file if it does not already exist.
         """
-        with open(self.CONFIG_FILE, "r") as file:
-            config = yaml.safe_load(file)
+        config = self.load_system_config(self.CONFIG_FILE)
 
         # Check if the component already exists
         for server_group in config["ServerGroups"]:
@@ -551,8 +646,7 @@ class {component_name.capitalize()}(Component):
         Delete a component from the YAML file.
         :param component_name: Name of the component.
         """
-        with open(self.CONFIG_FILE, "r") as file:
-            config = yaml.safe_load(file)
+        config = self.load_system_config(self.CONFIG_FILE)
 
         component_found = False
         for server_group in config["ServerGroups"]:
@@ -576,8 +670,7 @@ class {component_name.capitalize()}(Component):
         """
         Add a new function to an existing component in the YAML file if it does not already exist.
         """
-        with open(self.CONFIG_FILE, "r") as file:
-            config = yaml.safe_load(file)
+        config = self.load_system_config(self.CONFIG_FILE)
 
         # Find the component in the ServerGroups
         for server_group in config["ServerGroups"]:
@@ -607,8 +700,8 @@ class {component_name.capitalize()}(Component):
         :param component_name: Name of the component.
         :param function_name: Name of the function to delete.
         """
-        with open(self.CONFIG_FILE, "r") as file:
-            config = yaml.safe_load(file)
+
+        config = self.load_system_config(self.CONFIG_FILE)
 
         component_found = False
         for server_group in config["ServerGroups"]:
@@ -636,8 +729,8 @@ class {component_name.capitalize()}(Component):
         :param function_name: Name of the function to modify.
         :param parameters: New parameters for the function.
         """
-        with open(self.CONFIG_FILE, "r") as file:
-            config = yaml.safe_load(file)
+
+        config = self.load_system_config(self.CONFIG_FILE)
 
         component_found = False
         for server_group in config["ServerGroups"]:
@@ -874,8 +967,8 @@ class {component_name.capitalize()}(Component):
             return "None"
 
     def _update_yaml(self, component_name, functions):
-        with open(self.CONFIG_FILE, "r") as file:
-            config = yaml.safe_load(file)
+
+        config = self.load_system_config(self.CONFIG_FILE)
 
         new_component = {component_name: {}}
         for func in functions:
@@ -891,45 +984,92 @@ class {component_name.capitalize()}(Component):
         with open(self.CONFIG_FILE, "w") as file:
             yaml.safe_dump(config, file, default_flow_style=False)
 
-    def update_components_file(self, component_name, init_component_path):
+    def update_components_file(self, component_name, init_component_path, component_path, project_path):
         """
         Update the components.py file to import and initialize the new component.
         :param component_name: Name of the new component.
+        :param init_component_path: Path to the components.py file.
         """
         try:
-            # Prepare import and initialization statements
-            import_statement = f"from rakam_systems.components.{component_name}.{component_name}_functions import {component_name.capitalize()}\n"
-            init_statement = f"{component_name.lower()} = {component_name.capitalize()}(system_manager=system_manager)\n"
+            config = self.load_system_config(project_path)
+            config_envs = config['envs'] if 'envs' in config else {}
 
-            # Read the existing components file
+            component = self._find_component_class(component_path)
+            if component is None:
+                raise ValueError(
+                    f"Couldn't find {component_name} in {component_path}"
+                )
+
+            # Read and parse the existing components.py file
             with open(init_component_path, "r") as components_file:
-                lines = components_file.readlines()
+                file_content = components_file.read()
+
+            # Parse the file content into an AST
+            existing_code = ast.parse(file_content)
 
             # Check if the component already exists
-            if import_statement in lines or any(
-                init_statement.strip() in line for line in lines
-            ):
-                print(
-                    f"Component '{component_name}' already exists in components.py.")
-                return
+            for node in existing_code.body:
+                if isinstance(node, ast.ImportFrom) and node.module == f"rakam_systems.components.{component_name}.{component_name}_functions":
+                    print(
+                        f"Component '{component_name}' already exists in components.py.")
+                    return
+                if isinstance(node, ast.Assign) and node.targets[0].id == component_name.lower():
+                    print(
+                        f"Component '{component_name}' is already initialized in components.py.")
+                    return
 
-            # Add import statement before the first blank line after the existing imports
-            import_index = next(
-                (i for i, line in enumerate(lines)
-                 if line.strip() == ""), len(lines)
+            # Define the new import and initialization nodes
+            import_statement = ast.ImportFrom(
+                module=f"rakam_systems.components.{component_name}.{component_name}_functions",
+                names=[
+                    ast.alias(name=component_name.capitalize(), asname=None)],
+                level=0
             )
-            lines.insert(import_index, import_statement)
+            # add import statement
+            existing_code.body.insert(0, import_statement)
+            args = [
+                ast.keyword(arg="system_manager", value=ast.Name(
+                            id="system_manager", ctx=ast.Load()))
+            ]
+            # Loop through the methods of the class
+            for body_item in component.body:
+                # Check for function definitions
+                if isinstance(body_item, ast.FunctionDef):
+                    # Public methods are those not starting with an underscore
+                    # also ignore test methods
+                    if body_item.name == '__init__':
+                        for arg in body_item.args.args:
+                            arg_key = arg.arg
+                            if arg_key in ['self', 'system_manager']:
+                                continue
+                            if arg_key not in config_envs:
+                                raise ValueError(
+                                    f"Missing {arg_key} from config files.")
+                            args.append(
+                                ast.keyword(
+                                    arg=arg.arg, value=ast.Constant(
+                                        value=config_envs[arg_key], ctx=ast.Load(
+                                        )
+                                    )
+                                )
+                            )
 
-            # Add initialization statement before the last blank line
-            init_index = next(
-                (i for i, line in enumerate(reversed(lines)) if line.strip() == ""), 0
+            init_statement = ast.Assign(
+                targets=[ast.Name(id=component_name.lower(), ctx=ast.Store())],
+                value=ast.Call(
+                    func=ast.Name(id=component_name.capitalize(),
+                                  ctx=ast.Load()),
+                    args=args,
+                    keywords=[]
+                )
             )
-            init_index = len(lines) - init_index - 1
-            lines.insert(init_index, init_statement)
+            # Add the initialization statement at the end of the file
+            existing_code.body.append(init_statement)
 
-            # Write the updated content back to components.py
-            with open(init_component_path, "w") as components_file:
-                components_file.writelines(lines)
+            updated_code = ast.unparse(
+                ast.fix_missing_locations(existing_code))
+            with open(init_component_path, "w") as file:
+                file.write(updated_code)
 
             print(
                 f"Component '{component_name}' added to components.py successfully.")
