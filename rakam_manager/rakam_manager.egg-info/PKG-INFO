@@ -1,9 +1,0 @@
-Metadata-Version: 2.1
-Name: rakam_manager
-Version: 0.1.0
-Requires-Dist: click
-Requires-Dist: PyYAML
-Requires-Dist: pytest
-Requires-Dist: pytest-mock
-Requires-Dist: typeguard
-Requires-Dist: black

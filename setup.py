@@ -15,7 +15,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "rakam_manager=rakam_manager.cli:cli",
+            "rakam_manager=cli:cli",
         ],
     },
 )

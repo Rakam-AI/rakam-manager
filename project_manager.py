@@ -108,7 +108,6 @@ class ProjectManager:
                          'rakam_systems'),
             project_name
         )
-        print(f"Project '{project_name}' created successfully.")
 
     def generate_component_package(self, component_name, component_path):
         """

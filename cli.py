@@ -5,7 +5,7 @@ from typeguard import check_type
 from typing import get_type_hints, Any, Union, List, Dict, Tuple, Optional
 import click
 import json
-from rakam_manager.project_manager import ProjectManager
+from project_manager import ProjectManager
 import os
 
 
