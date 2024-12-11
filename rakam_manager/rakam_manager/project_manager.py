@@ -1022,7 +1022,7 @@ class {component_name.capitalize()}(Component):
             import_statement = ast.ImportFrom(
                 module=f"rakam_systems.components.{component_name}.{component_name}_functions",
                 names=[
-                    ast.alias(name=component_name.capitalize(), asname=None)],
+                    ast.alias(name=component.name, asname=None)],
                 level=0
             )
             # add import statement
@@ -1055,10 +1055,12 @@ class {component_name.capitalize()}(Component):
                             )
 
             init_statement = ast.Assign(
-                targets=[ast.Name(id=component_name.lower(), ctx=ast.Store())],
+                targets=[ast.Name(id=component_name, ctx=ast.Store())],
                 value=ast.Call(
-                    func=ast.Name(id=component_name.capitalize(),
-                                  ctx=ast.Load()),
+                    func=ast.Name(
+                        id=component.name,
+                        ctx=ast.Load()
+                    ),
                     args=args,
                     keywords=[]
                 )
