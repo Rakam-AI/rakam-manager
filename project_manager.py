@@ -1,3 +1,4 @@
+from yaml import SafeDumper
 import traceback
 from typing import Optional
 import ast
@@ -14,9 +15,24 @@ from dotenv import load_dotenv
 
 class ProjectManager:
     COMPONENTS_DIR = "components"
+    templates = {
+        # key:path
+        'base': 'base_template',
+        'rag': 'rag_template'
+    }
     BASE_TEMPLATE_DIR = os.path.join(
-        os.path.dirname(__file__), "templates", "base_template"
+        os.path.dirname(__file__), "templates", "build_template"
     )
+
+    def get_template_path(self, template_name: str) -> str:
+        template_dir = self.templates.get(template_name, None)
+        if template_dir is None:
+            raise FileNotFoundError(
+                f"Can't find template with given name {template_name}"
+            )
+        return os.path.join(
+            os.path.dirname(__file__), "templates", template_dir
+        )
     CONFIG_FILE = os.path.join(BASE_TEMPLATE_DIR, "system_config.yaml")
 
     def __init__(self):
@@ -38,6 +54,16 @@ class ProjectManager:
             config = yaml.safe_load(os.path.expandvars(file.read()))
         return config
 
+    def save_system_config(self, config, path):
+        SafeDumper.add_representer(
+            type(None),
+            lambda dumper, value: dumper.represent_scalar(
+                u'tag:yaml.org,2002:null', ''
+            )
+        )
+        with open(os.path.join(path, 'system_config.yaml'), "w") as file:
+            yaml.safe_dump(config, file, default_flow_style=False)
+
     def generate_build(self, project_path):
         dist = os.path.join(project_path, 'dist')
         if os.path.exists(dist):
@@ -50,6 +76,7 @@ class ProjectManager:
         shutil.rmtree(os.path.join(dist, 'application', 'rakam_systems'))
         # Iterate over all items in the current directory
         for item in os.listdir(project_path):
+            # ignore old build and virtual envirnoment
             if item in ['dist', 'venv']:
                 continue
             source_path = os.path.join(project_path, item)
@@ -63,53 +90,46 @@ class ProjectManager:
             else:
                 shutil.copy2(source_path, destination_path)
         config = self.load_system_config(project_path)
-        # Add the new component
-        if not config["ServerGroups"][0]["components"]:
-            config["ServerGroups"][0]["components"] = []
+
         init_component_path = os.path.join(
             dist, "application/engine/components.py")
         views_path = os.path.join(dist, 'application/views.py')
         urls_path = os.path.join(dist, 'application/urls.py')
         serializrs_path = os.path.join(dist, 'application/serializers.py')
-        for item in config["ServerGroups"][0]["components"]:
-            for i in item:
-                if i.islower():
-                    component_functions_path = os.path.join(
-                        dist,
-                        "application/rakam_systems/rakam_systems/components",
-                        i,
-                        f'{i}_functions.py'
-                    )
-                    self.update_components_file(
-                        i, init_component_path,
-                        component_functions_path, project_path
-                    )
-                    self.update_views(
-                        i,
-                        component_functions_path,
-                        views_path,
-                        urls_path,
-                        serializrs_path
-                    )
+        for componant_name, componant_value in config.get("components", {}).items():
+            component_functions_path = os.path.join(
+                dist,
+                "application/rakam_systems/rakam_systems/components",
+                componant_name,
+                f'{componant_name}.py'
+            )
+            self.update_components_file(
+                componant_name, init_component_path,
+                component_functions_path, project_path
+            )
+            self.update_views(
+                componant_name,
+                component_functions_path,
+                views_path,
+                urls_path,
+                serializrs_path, project_path
+            )
 
         with open(self.CONFIG_FILE, "w") as file:
             yaml.safe_dump(config, file, default_flow_style=False)
         return True
 
-    def create_project(self, project_name):
-        if not os.path.exists(self.BASE_TEMPLATE_DIR):
-            raise FileNotFoundError("Base template directory does not exist.")
-
+    def create_project(self, project_name, template_name):
         if os.path.exists(project_name):
             raise FileExistsError(f"Project '{project_name}' already exists.")
+        template_path = self.get_template_path(template_name)
 
         shutil.copytree(
-            os.path.join(self.BASE_TEMPLATE_DIR, 'application',
-                         'rakam_systems'),
+            template_path,
             project_name
         )
 
-    def generate_component_package(self, component_name, component_path):
+    def copy_component_template(self, component_name, component_path):
         """
         Generate a package for the component with the specified name.
         :param component_name: Name of the component.
@@ -125,7 +145,7 @@ class ProjectManager:
 
             # Create a file for the component with a default class
             functions_file_path = os.path.join(
-                component_path, f"{component_name}_functions.py"
+                component_path, f"{component_name}.py"
             )
             with open(functions_file_path, "w") as functions_file:
                 functions_file.write(
@@ -481,7 +501,7 @@ class {component_name.capitalize()}(Component):
 
         print(f"Views added to {views_file_path}.")
 
-    def _create_serializers_from_component_methods(self, component_name: str, methods: List[ast.FunctionDef], serializers_file_path):
+    def _create_serializers_from_component_methods(self, component_name: str, methods: List[ast.FunctionDef], serializers_file_path, project_path):
         """
         Creates serializers based on method arguments and return types.
 
@@ -503,7 +523,7 @@ class {component_name.capitalize()}(Component):
         except FileNotFoundError:
             # If the file doesn't exist, start with an empty module
             existing_code = ast.Module(body=[], type_ignores=[])
-
+        config = self.load_system_config(project_path)
         # Add necessary imports if not already present
         imports = [
             ast.ImportFrom(
@@ -528,7 +548,7 @@ class {component_name.capitalize()}(Component):
 
             method_name = method.name
             serializer_name = self._to_camel_case_class_name(
-                f"{component_name} {method.name} Serializer"
+                f"{component_name} {method_name} Serializer"
             )
             return_type = ast.unparse(
                 method.returns
@@ -543,12 +563,25 @@ class {component_name.capitalize()}(Component):
 
             # Generate fields based on type hints
             fields = []
+            ser_args = config.get('components', {}).get(
+                component_name, {}).get(method_name, {}).get('args', {})
             for arg_name, arg_type in type_hints.items():
                 field_type = "CharField"  # Default to CharField
-                if arg_type == 'int':
+                # Check if the annotation is an iterable
+                if "List" in arg_type or "Tuple" in arg_type or "Set" in arg_type:
+                    field_type = "ListField"
+                elif arg_type == 'int':
                     field_type = "IntegerField"
                 elif arg_type == 'dict':
                     field_type = "DictField"
+                elif arg_type == 'float':
+                    field_type = "FloatField"
+
+                field_configs = [
+                    ast.keyword(arg=constraint_key, value=ast.Constant(
+                        value=constraint_value))
+                    for constraint_key, constraint_value in ser_args.get(arg_name, {}).items()
+                ]
                 fields.append(
                     ast.Assign(
                         targets=[ast.Name(id=arg_name, ctx=ast.Store())],
@@ -562,13 +595,8 @@ class {component_name.capitalize()}(Component):
                                 ctx=ast.Load()
                             ),
                             args=[],
-                            keywords=[]
+                            keywords=field_configs
                         )
-                        # value=ast.Call(
-                        #     func=ast.Name(id=field_type, ctx=ast.Load()),
-                        #     args=[],
-                        #     keywords=[]
-                        # ),
                     )
                 )
             # Create the serializer class
@@ -602,42 +630,51 @@ class {component_name.capitalize()}(Component):
 
         print(f"Serializers added to {serializers_file_path}.")
 
-    def update_views(self, component_name, component_functions_path, view_file_path, url_file_path, serializers_file_path):
+    def update_views(
+        self,
+        component_name,
+        component_functions_path,
+        view_file_path, url_file_path,
+        serializers_file_path, project_path
+    ):
+        config = self.load_system_config(project_path)
+        component_config = config.get('components', {}).get(component_name, {})
         methods = self._find_public_method_component_classes(
             component_functions_path
         )
         self._create_serializers_from_component_methods(
-            component_name, methods, serializers_file_path
+            component_name, methods, serializers_file_path, project_path
         )
         self._create_view_from_component_methods(
             component_name, methods, view_file_path
         )
         for method in methods:
+            view_path = component_config.get(
+                method.name, {}).get('path', method.name)
             self._add_url_entry(
-                url_file_path, f'external/{component_name}/{method.name}/', f"{method.name}_view", f"{method.name}_view"
+                url_file_path,
+                f'external/{component_name}/{view_path}/'.replace('//', '/'),
+                f"{method.name}_view", f"{method.name}_view"
             )
 
-    def add_component(self, component_name):
+    def add_component(self, component_name, project_path):
         """
         Add a new component to the YAML file if it does not already exist.
         """
-        config = self.load_system_config(self.CONFIG_FILE)
-
-        # Check if the component already exists
-        for server_group in config["ServerGroups"]:
-            for component in server_group["components"]:
-                if component_name in component:
-                    print(f"Component '{component_name}' already exists.")
-                    return False
-
-        # Add the new component
-        new_component = {component_name: {}}
-        if not config["ServerGroups"][0]["components"]:
-            config["ServerGroups"][0]["components"] = []
-        config["ServerGroups"][0]["components"].append(new_component)
-
-        with open(self.CONFIG_FILE, "w") as file:
-            yaml.safe_dump(config, file, default_flow_style=False)
+        config = self.load_system_config(project_path)
+        component_config = config.get(
+            'components', {}).get(component_name, None)
+        if component_config is not None:
+            raise FileExistsError(
+                f"Component {component_name}'s config already exist"
+            )
+        if not config.get('components'):
+            config['components'] = {}
+        config['components'][component_name] = {
+            'args': None,
+            'call_main': None
+        }
+        self.save_system_config(config, project_path)
         return True
 
     def delete_component(self, component_name):
@@ -887,7 +924,7 @@ class {component_name.capitalize()}(Component):
         """
         try:
             functions_file_path = os.path.join(
-                component_path, f"{component_name}_functions.py"
+                component_path, f"{component_name}.py"
             )
 
             # Prepare the parameter string for the function
