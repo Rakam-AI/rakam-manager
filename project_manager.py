@@ -662,6 +662,8 @@ class {component_name.capitalize()}(Component):
         Add a new component to the YAML file if it does not already exist.
         """
         config = self.load_system_config(project_path)
+        if config.get('components', {}) is None:
+            config['components'] = {}
         component_config = config.get(
             'components', {}).get(component_name, None)
         if component_config is not None:
