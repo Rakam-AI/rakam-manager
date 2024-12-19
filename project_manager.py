@@ -1045,7 +1045,7 @@ class {component_name.capitalize()}(Component):
 
             # Check if the component already exists
             for node in existing_code.body:
-                if isinstance(node, ast.ImportFrom) and node.module == f"rakam_systems.components.{component_name}.{component_name}_functions":
+                if isinstance(node, ast.ImportFrom) and node.module == f"rakam_systems.components.{component_name}.{component_name}":
                     print(
                         f"Component '{component_name}' already exists in components.py.")
                     return
@@ -1056,7 +1056,7 @@ class {component_name.capitalize()}(Component):
 
             # Define the new import and initialization nodes
             import_statement = ast.ImportFrom(
-                module=f"rakam_systems.components.{component_name}.{component_name}_functions",
+                module=f"rakam_systems.components.{component_name}.{component_name}",
                 names=[
                     ast.alias(name=component.name, asname=None)],
                 level=0
