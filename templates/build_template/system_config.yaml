@@ -1,0 +1,60 @@
+base_url: http://localhost:8000/api
+components:
+  sql_db:
+    args:
+      db_path: data/sqldb_for_test/database.db
+    create_table:
+      args:
+        columns:
+          max_length: 8192
+          required: true
+        table:
+          max_length: 1024
+          required: true
+    delete_data:
+      args:
+        condition:
+          max_length: 8192
+          required: true
+        condition_params:
+          required: true
+        table:
+          max_length: 1024
+          required: true
+    execute_query:
+      args:
+        data:
+          default: null
+          required: false
+        query:
+          max_length: 8192
+          required: true
+    insert_data:
+      args:
+        data:
+          required: true
+        table:
+          max_length: 1024
+          required: true
+    update_data:
+      args:
+        condition:
+          max_length: 8192
+          required: true
+        condition_params:
+          required: true
+        data:
+          required: true
+        table:
+          max_length: 1024
+          required: true
+  test_test:
+    args: null
+    call_main:
+      args:
+        arg1:
+          max_length: 123
+          required: false
+      path: /test/etest/
+envs:
+  db_path: data/sqldb_for_test/database.db

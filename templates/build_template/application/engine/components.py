@@ -26,4 +26,4 @@ s3_manager = S3FileManager(bucket_name="rakam-test-rs", system_manager=system_ma
 
 llm_connector = LLMManager(system_manager=system_manager, model="mistral-large-latest")
 
-sql_db = SQLDB(system_manager=system_manager, db_path="data/sqldb_for_test/database.db")
+# sql_db = SQLDB(system_manager=system_manager, db_path="data/sqldb_for_test/database.db")
