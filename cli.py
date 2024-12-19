@@ -17,12 +17,13 @@ def cli():
 
 @cli.command()
 @click.option("--name", required=True, help="Name of the project to create.")
-def create_project(name):
+@click.option("--template", default='base', show_default=True, required=False, help="Name of the template to start with.")
+def create_project(name, template):
     """Create a new project based on the base template."""
     pm = ProjectManager()
     # pm.project_path = project_path
     try:
-        pm.create_project(name)
+        pm.create_project(name, template)
         click.echo(f"Project '{name}' created successfully.")
     except Exception as e:
         click.echo(f"Error creating project '{name}': {e}")
@@ -43,7 +44,7 @@ def yaml_test(project_path):
     with open(os.path.join(project_path, 'system_config.yaml'), "r") as file:
         config = yaml.safe_load(os.path.expandvars(file.read()))
 
-    print(config['envs'])
+    print(config['components'])
 
 
 @cli.command()
@@ -53,7 +54,6 @@ def yaml_test(project_path):
 def generate(project_path):
     """generate deployable project."""
     pm = ProjectManager()
-    pm.BASE_TEMPLATE_DIR
     # pm.project_path = project_path
     try:
         pm.generate_build(project_path)
@@ -66,7 +66,7 @@ def generate(project_path):
 @cli.command()
 @click.option("--name", required=True, help="Name of the component to add.")
 @click.option(
-    "--project-path", required=True, help="Path to the project configuration file."
+    "--project-path", default='base', show_default=True, required=False, help="Path to the project configuration file."
 )
 def add_component(name, project_path):
     """Add a new component to the project."""
@@ -78,18 +78,14 @@ def add_component(name, project_path):
     init_component_path = os.path.join(
         project_path, "application/engine/components.py")
     try:
-        if pm.add_component(name):
+        if pm.add_component(name, project_path):
             click.echo(f"Component '{name}' added successfully.")
-            pm.generate_component_package(
-                name, component_path)  # Generate the package
-            # TODO: do this instruction when generating django app
-            # pm.update_components_file(
-            #     name, init_component_path
-            # )  # Update the components.py file
+            pm.copy_component_template(
+                name, component_path
+            )  # Generate the package
             click.echo(
                 f"Component '{name}' added and package generated successfully.")
-        else:
-            click.echo(f"Component '{name}' already exists.")
+
     except Exception as e:
         click.echo(f"Error adding component '{name}': {e}")
 
