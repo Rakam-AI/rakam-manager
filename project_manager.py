@@ -654,7 +654,7 @@ class {component_name.capitalize()}(Component):
             self._add_url_entry(
                 url_file_path,
                 f'external/{component_name}/{view_path}/'.replace('//', '/'),
-                f"{method.name}_view", f"{method.name}_view"
+                f"{component_name}_{method.name}_view", f"{method.name}_view"
             )
 
     def add_component(self, component_name, project_path):
